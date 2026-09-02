@@ -57,7 +57,7 @@ async function checkAirAlerts() {
     const data = await response.json();
     const regions = Array.isArray(data) ? data : [data];
     const hasAlert = regions.some(r =>
-      Array.isArray(r.activeAlerts) && r.activeAlerts.length > 0
+      Array.isArray(r.activeAlerts) && r.activeAlerts.some(a => a?.type === 'AIR')
     );
 
     setAlertStatus(hasAlert);
@@ -74,7 +74,10 @@ function setAlertStatus(hasAlert) {
   if (hasAlert === null) {
     box.className = 'unknown';
     box.innerText = '❔ Статус тривоги невідомий';
-  } else if (hasAlert) {
+    return;
+  }
+
+  if (hasAlert) {
     box.className = 'alert';
     box.innerText = '🚨 ПОВІТРЯНА ТРИВОГА — ДНІПРО';
     if (currentAlertStatus !== true) {
