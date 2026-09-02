@@ -365,6 +365,10 @@ function parseReplacesHtml(htmlContent) {
 
 async function fetchReplaces() {
   console.log('🔄 Завантаження замін...');
+  if (allReplaces.length === 0) {
+    replacesError = null;
+    renderReplaces();
+  }
 
   const corsProxies = [
     { url: `https://api.allorigins.win/get?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: true },
