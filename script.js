@@ -10,6 +10,7 @@ const DEFAULT_SCHEDULE = [
 const WEATHER_COORDS = { lat: 48.45, lon: 34.98 }; // Дніпро
 const API_TIMEOUT = 8000;
 const REPLACES_URL = 'https://dtrek.dp.ua/stud/class-replaces';
+const REPLACES_JSON_URL = 'https://raw.githubusercontent.com/enterthg/dtefk-system-optimized/main/replaces.json';
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 let schedule = [];
@@ -379,7 +380,24 @@ async function fetchReplaces() {
 
   let parsed = null;
 
+  try {
+    const res = await Promise.race([
+      fetch(`${REPLACES_JSON_URL}?t=${Date.now()}`, { cache: 'no-store' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
+    ]);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.items)) {
+        parsed = data.items;
+        console.log('✅ Заміни завантажені з GitHub:', parsed.length, 'записів, оновлено', data.updated);
+      }
+    }
+  } catch (e) {
+    console.warn('GitHub JSON недоступний:', e.message);
+  }
+
   for (const proxy of corsProxies) {
+    if (parsed !== null) break;
     try {
       const res = await Promise.race([
         fetch(proxy.url),
