@@ -14,6 +14,7 @@ const REPLACES_URL = 'https://dtrek.dp.ua/stud/class-replaces';
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 let schedule = [];
 let allReplaces = [];
+let replacesError = false;
 let currentPage = 0;
 let weatherData = null;
 let currentAlertStatus = false;
@@ -308,116 +309,110 @@ function playBell() {
 }
 
 // ==================== ЗАМІНИ ====================
-async function fetchReplaces() {
-  try {
-    console.log('🔄 Завантаження замін...');
-    
-    // Спроба завантажити напряму через CORS proxy
-    const corsProxies = [
-      `https://api.allorigins.win/get?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`,
-      `https://cors-anywhere.herokuapp.com/${REPLACES_URL}`
-    ];
-    
-    let loaded = false;
-    
-    for (let proxy of corsProxies) {
-      if (loaded) break;
-      
-      try {
-        const res = await Promise.race([
-          fetch(proxy),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
-        ]);
-        
-        if (!res.ok) continue;
-        
-        const data = await res.json();
-        const htmlContent = data.contents || data;
-        
-        if (htmlContent) {
-          const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
-          allReplaces = [];
-          
-          // Шукаємо таблиці
-          const tables = doc.querySelectorAll('table');
-          console.log('📊 Знайдено таблиць:', tables.length);
-          
-          tables.forEach((table, tableIdx) => {
-            const rows = table.querySelectorAll('tr');
-            console.log(`📋 Таблиця ${tableIdx}: ${rows.length} рядків`);
-            
-            rows.forEach((row, rowIdx) => {
-              const cells = row.querySelectorAll('td');
-              
-              if (cells.length >= 2) {
-                // Перший стовпець - це ЗАВЖДИ група
-                const group = cells[0]?.innerText?.trim();
-                
-                // Останній стовпець - кабінет
-                const room = cells[cells.length - 1]?.innerText?.trim();
-                
-                // Все посередині - інформація про заміну
-                let info = Array.from(cells)
-                  .slice(1, cells.length - 1)
-                  .map(c => c.innerText.trim())
-                  .filter(t => t && t.length > 0)
-                  .join(' → ');
-                
-                // Перевіряємо, що це справді група (повинна містити літери та цифри та тире)
-                if (group && group.length > 0 && !group.match(/^[№\s-]*$/)) {
-                  allReplaces.push({
-                    group: group,
-                    info: info || 'Змін розкладу',
-                    room: room?.replace(/[-–—]/g, '').trim() || '--'
-                  });
-                  console.log(`✓ Група: ${group} | Кабінет: ${room} | Інфо: ${info}`);
-                }
-              }
-            });
-          });
-          
-          if (allReplaces.length > 0) {
-            console.log('✅ Заміни завантажені:', allReplaces.length, 'записів');
-            loaded = true;
-          }
-        }
-      } catch (e) {
-        console.warn(`Proxy не працює:`, e.message);
-      }
-    }
-    
-    if (!loaded) {
-      console.warn('❌ Не вдалося завантажити заміни з основного джерела');
-      showDemoReplaces();
-    }
-    
-    currentPage = 0;
-    renderReplaces();
-  } catch (e) {
-    console.error('💥 Критична помилка завантаження замін:', e);
-    showDemoReplaces();
-    renderReplaces();
-  }
+const GROUP_RE = /^[A-Za-zА-ЯІЇЄҐа-яіїєґ0-9]+(?:-[A-Za-zА-ЯІЇЄҐа-яіїєґ0-9]+)+$/;
+
+function cleanText(cell) {
+  return (cell?.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-function showDemoReplaces() {
-  if (allReplaces.length === 0) {
-    allReplaces = [
-      { group: "081-24с-2", info: "Укр. мова → Англійська мова", room: "304" },
-      { group: "F7-25-2", info: "Математика → Фізика", room: "201" },
-      { group: "МН-20", info: "Інформатика → Семінар", room: "105" },
-      { group: "БІ-22", info: "Біологія → Химія", room: "215" },
-      { group: "ІС-21", info: "Історія → Географія", room: "308" }
-    ];
-    console.log('📝 Показуються демо заміни');
+function parseReplacesHtml(htmlContent) {
+  const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+  const result = [];
+
+  doc.querySelectorAll('table').forEach(table => {
+    const headers = Array.from(table.querySelectorAll('th')).map(th => cleanText(th).toLowerCase());
+    const col = name => headers.findIndex(h => h.includes(name));
+    const idx = {
+      group: col('груп'),
+      lesson: col('пара'),
+      subject: col('предмет'),
+      teacher: col('виклад'),
+      room: col('аудит')
+    };
+    const hasHeaders = idx.group !== -1;
+
+    table.querySelectorAll('tr').forEach(row => {
+      const cells = Array.from(row.querySelectorAll('td'));
+      if (cells.length < 2) return;
+
+      const pick = i => (i !== -1 && cells[i]) ? cleanText(cells[i]) : '';
+      const group = hasHeaders ? pick(idx.group) : cleanText(cells[0]);
+      if (!GROUP_RE.test(group)) return;
+
+      let info;
+      let room;
+      if (hasHeaders) {
+        const lesson = pick(idx.lesson);
+        const subject = pick(idx.subject);
+        const teacher = pick(idx.teacher);
+        room = pick(idx.room);
+        info = [lesson ? `${lesson} пара` : '', subject, teacher].filter(Boolean).join(' • ');
+      } else {
+        room = cleanText(cells[cells.length - 1]);
+        info = cells.slice(1, -1).map(cleanText).filter(Boolean).join(' • ');
+      }
+
+      result.push({
+        group,
+        info: info || 'Зміна розкладу',
+        room: room.replace(/[-–—]/g, '').trim() || '--'
+      });
+    });
+  });
+
+  return result;
+}
+
+async function fetchReplaces() {
+  console.log('🔄 Завантаження замін...');
+
+  const corsProxies = [
+    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: true },
+    { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: false },
+    { url: `https://corsproxy.io/?url=${encodeURIComponent(REPLACES_URL)}`, json: false },
+    { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(REPLACES_URL)}`, json: false }
+  ];
+
+  let parsed = null;
+
+  for (const proxy of corsProxies) {
+    try {
+      const res = await Promise.race([
+        fetch(proxy.url),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
+      ]);
+      if (!res.ok) continue;
+
+      const htmlContent = proxy.json ? (await res.json()).contents : await res.text();
+      if (!htmlContent || !htmlContent.includes('<table')) continue;
+
+      parsed = parseReplacesHtml(htmlContent);
+      console.log('✅ Заміни завантажені:', parsed.length, 'записів');
+      break;
+    } catch (e) {
+      console.warn('Proxy не працює:', e.message);
+    }
   }
+
+  if (parsed === null) {
+    console.warn('❌ Не вдалося завантажити заміни');
+    replacesError = true;
+  } else {
+    replacesError = false;
+    allReplaces = parsed;
+  }
+
+  currentPage = 0;
+  renderReplaces();
 }
 
 function renderReplaces() {
   const list = document.getElementById('replacesList');
 
   if (allReplaces.length === 0) {
-    list.innerHTML = "<div style='text-align:center;margin-top:50px;opacity:0.7;'>✅ Замін немає</div>";
+    list.innerHTML = replacesError
+      ? "<div style='text-align:center;margin-top:50px;opacity:0.7;'>⚠️ Не вдалося завантажити заміни</div>"
+      : "<div style='text-align:center;margin-top:50px;opacity:0.7;'>✅ Замін немає</div>";
     document.getElementById('pageInfo').innerText = "0/0";
     return;
   }

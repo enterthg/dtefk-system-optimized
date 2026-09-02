@@ -159,7 +159,7 @@
 
   .replace-item {
     display: grid;
-    grid-template-columns: 80px 1fr 60px;
+    grid-template-columns: auto 1fr 60px;
     background: rgba(255, 255, 255, 0.08);
     padding: 10px 12px;
     border-radius: 12px;
@@ -179,6 +179,8 @@
     font-weight: 900;
     color: #00fff5;
     font-size: 14px;
+    white-space: nowrap;
+    min-width: 80px;
   }
 
   .rep-info {
@@ -517,7 +519,7 @@
     }
 
     .replace-item {
-      grid-template-columns: 70px 1fr 50px;
+      grid-template-columns: auto 1fr 50px;
       font-size: 11px;
       padding: 8px 10px;
     }
@@ -577,7 +579,7 @@
     }
 
     .replace-item {
-      grid-template-columns: 60px 1fr 45px;
+      grid-template-columns: auto 1fr 45px;
       font-size: 10px;
       padding: 7px 8px;
       border-radius: 10px;
@@ -673,7 +675,7 @@
     }
 
     .replace-item {
-      grid-template-columns: 50px 1fr 40px;
+      grid-template-columns: auto 1fr 40px;
       font-size: 9px;
       padding: 6px 6px;
     }
