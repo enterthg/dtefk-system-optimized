@@ -9,7 +9,6 @@ const DEFAULT_SCHEDULE = [
 
 const WEATHER_COORDS = { lat: 48.45, lon: 34.98 }; // Дніпро
 const API_TIMEOUT = 5000;
-const DNIPRO_REGION_ID = 12; // ID регіону Дніпро в API
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 let schedule = [];
@@ -17,6 +16,7 @@ let allReplaces = [];
 let currentPage = 0;
 let weatherData = null;
 let alertCheckInterval = null;
+let currentAlertStatus = false;
 
 // ==================== ІНІЦІАЛІЗАЦІЯ ====================
 function init() {
@@ -30,7 +30,7 @@ function init() {
   setInterval(renderReplaces, 5000);
   setInterval(fetchReplaces, 600000); // 10 хвилин
   setInterval(loadWeather, 1800000); // 30 хвилин
-  setInterval(checkAirAlerts, 30000); // Перевіра кожні 30 секунд
+  setInterval(checkAirAlerts, 15000); // Перевіра кожні 15 секунд
   
   document.addEventListener('click', () => {
     const bell = document.getElementById('bell');
@@ -43,176 +43,100 @@ function init() {
 // ==================== СИСТЕМА ТРИВОГ ====================
 async function checkAirAlerts() {
   try {
+    // API для перевірки тривог в Україні
     const response = await fetch('https://api.ukrainealerts.com/v3/alerts', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
       signal: AbortSignal.timeout(API_TIMEOUT)
     });
     
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      console.warn('Помилка API тривог:', response.status);
+      return;
+    }
     
     const data = await response.json();
-    const dnipro_alerts = data.alerts?.filter(alert => 
-      alert.region_id === DNIPRO_REGION_ID || 
-      alert.location_title?.includes('Дніпро') ||
-      alert.location_title?.includes('Днепр')
-    );
     
-    if (dnipro_alerts && dnipro_alerts.length > 0) {
-      const active_alert = dnipro_alerts.find(a => a.alert);
-      if (active_alert && active_alert.alert) {
-        showAirAlert(active_alert);
-      } else {
-        hideAirAlert();
+    // Шукаємо тривогу для Дніпра (регіон Дніпропетровська область)
+    let dnipro_alert = false;
+    
+    if (data.alerts && Array.isArray(data.alerts)) {
+      for (let alert of data.alerts) {
+        // Перевіряємо назву регіону
+        if (alert.location_title) {
+          const location = alert.location_title.toLowerCase();
+          if (location.includes('дніпро') || 
+              location.includes('днепр') || 
+              location.includes('дніпропетровськ') ||
+              location.includes('днепропетровск')) {
+            if (alert.alert === true) {
+              dnipro_alert = true;
+              break;
+            }
+          }
+        }
       }
-    } else {
-      hideAirAlert();
     }
+    
+    // Оновлюємо статус
+    if (dnipro_alert && !currentAlertStatus) {
+      showAirAlert();
+      currentAlertStatus = true;
+    } else if (!dnipro_alert && currentAlertStatus) {
+      hideAirAlert();
+      currentAlertStatus = false;
+    }
+    
   } catch (e) {
     console.warn('Помилка перевірки тривог:', e);
   }
 }
 
-function showAirAlert(alert) {
-  let alertBox = document.getElementById('airAlertBox');
+function showAirAlert() {
+  const alertBox = document.getElementById('airAlertBox');
   
-  if (!alertBox) {
-    alertBox = document.createElement('div');
-    alertBox.id = 'airAlertBox';
+  if (!alertBox.innerHTML.includes('alertContent')) {
     alertBox.innerHTML = `
       <div id="alertContent">
         <div id="alertIcon">🚨</div>
         <div id="alertText">ПОВІТРЯНА ТРИВОГА!</div>
-        <div id="alertTime">--:--</div>
+        <div id="alertTime">Перевіряється...</div>
       </div>
     `;
-    document.body.appendChild(alertBox);
-    
-    const style = document.createElement('style');
-    style.textContent = `
-      #airAlertBox {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(255, 0, 0, 0.15);
-        backdrop-filter: blur(5px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        pointer-events: none;
-      }
-
-      #alertContent {
-        text-align: center;
-        font-size: 80px;
-        font-weight: 900;
-        color: #ff0000;
-        text-shadow: 0 0 30px rgba(255, 0, 0, 0.8);
-        animation: alertBlink 0.6s infinite, alertPulse 1s ease-in-out infinite;
-        font-family: 'Arial', sans-serif;
-      }
-
-      #alertIcon {
-        font-size: 120px;
-        margin-bottom: 20px;
-        animation: alertShake 0.3s infinite;
-      }
-
-      #alertText {
-        font-size: 60px;
-        margin-bottom: 30px;
-        letter-spacing: 3px;
-      }
-
-      #alertTime {
-        font-size: 40px;
-        color: #ffaa00;
-        margin-top: 20px;
-      }
-
-      @keyframes alertBlink {
-        0%, 50% { opacity: 1; }
-        25%, 75% { opacity: 0.3; }
-      }
-
-      @keyframes alertPulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-      }
-
-      @keyframes alertShake {
-        0%, 100% { transform: translateX(0) rotate(0deg); }
-        25% { transform: translateX(-10px) rotate(-5deg); }
-        75% { transform: translateX(10px) rotate(5deg); }
-      }
-
-      @keyframes alertFlash {
-        0%, 49% { background: rgba(255, 0, 0, 0.15); }
-        50%, 100% { background: rgba(255, 0, 0, 0.3); }
-      }
-
-      #airAlertBox.active {
-        animation: alertFlash 1s infinite;
-      }
-    `;
-    document.head.appendChild(style);
   }
   
   alertBox.classList.add('active');
-  
-  // Оновлення часу тривоги
-  if (alert.started_at) {
-    const startTime = new Date(alert.started_at);
-    const updateAlertTime = () => {
-      const now = new Date();
-      const diff = Math.floor((now - startTime) / 1000);
-      const minutes = Math.floor(diff / 60);
-      const seconds = diff % 60;
-      document.getElementById('alertTime').textContent = 
-        `Тривога ${minutes}:${seconds.toString().padStart(2, '0')}`;
-    };
-    updateAlertTime();
-    
-    if (alertCheckInterval) clearInterval(alertCheckInterval);
-    alertCheckInterval = setInterval(updateAlertTime, 1000);
-  }
-
-  // Звуковий сигнал
   playAlertSound();
   
-  console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!');
+  console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!', new Date().toLocaleTimeString('uk-UA'));
 }
 
 function hideAirAlert() {
   const alertBox = document.getElementById('airAlertBox');
-  if (alertBox) {
-    alertBox.classList.remove('active');
-    alertBox.style.display = 'none';
-  }
-  if (alertCheckInterval) {
-    clearInterval(alertCheckInterval);
-    alertCheckInterval = null;
-  }
+  alertBox.classList.remove('active');
+  console.log('✅ Тривога завершена', new Date().toLocaleTimeString('uk-UA'));
 }
 
 function playAlertSound() {
-  // Синтезуємо звук тривоги
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
-  
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  
-  oscillator.frequency.value = 800;
-  oscillator.type = 'sine';
-  
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-  
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + 0.5);
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Вищий звук
+    const osc1 = audioContext.createOscillator();
+    const gain1 = audioContext.createGain();
+    osc1.connect(gain1);
+    gain1.connect(audioContext.destination);
+    osc1.frequency.value = 1000;
+    osc1.type = 'sine';
+    gain1.gain.setValueAtTime(0.2, audioContext.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+    osc1.start(audioContext.currentTime);
+    osc1.stop(audioContext.currentTime + 0.3);
+  } catch (e) {
+    console.warn('Не вдалося відтворити звук:', e);
+  }
 }
 
 // ==================== РОЗКЛАД ====================
@@ -378,22 +302,25 @@ function updateClock() {
 }
 
 function playBell() {
-  const bell = document.getElementById('bell');
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  
-  osc.connect(gain);
-  gain.connect(audioContext.destination);
-  
-  osc.frequency.setValueAtTime(1000, audioContext.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.3);
-  
-  gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0, audioContext.currentTime + 0.3);
-  
-  osc.start(audioContext.currentTime);
-  osc.stop(audioContext.currentTime + 0.3);
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    osc.frequency.setValueAtTime(1000, audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.3);
+    
+    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0, audioContext.currentTime + 0.3);
+    
+    osc.start(audioContext.currentTime);
+    osc.stop(audioContext.currentTime + 0.3);
+  } catch (e) {
+    console.warn('Помилка звуку:', e);
+  }
 }
 
 // ==================== ЗАМІНИ ====================
