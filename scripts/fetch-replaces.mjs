@@ -43,11 +43,13 @@ function parse(html) {
 const res = await fetch(REPLACES_URL, { signal: AbortSignal.timeout(30000) });
 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 const html = await res.text();
-if (!html.includes('<table')) throw new Error('Таблицю не знайдено');
+if (!/<title>[^<]*Зміни до розкладу/i.test(html)) throw new Error('Неочікувана сторінка (немає заголовка «Зміни до розкладу»)');
 
 const items = parse(html);
-const previous = existsSync('replaces.json') ? JSON.parse(readFileSync('replaces.json', 'utf8')).items : null;
-if (JSON.stringify(previous) === JSON.stringify(items)) {
+const previous = existsSync('replaces.json') ? JSON.parse(readFileSync('replaces.json', 'utf8')) : {};
+const sameItems = JSON.stringify(previous.items) === JSON.stringify(items);
+const recent = Date.now() - new Date(previous.updated).getTime() < 12 * 60 * 60 * 1000;
+if (sameItems && recent) {
   console.log('Замін без змін');
 } else {
   writeFileSync('replaces.json', JSON.stringify({ updated: new Date().toISOString(), items }, null, 2) + '\n');

@@ -387,7 +387,8 @@ async function fetchReplaces() {
     ]);
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.items)) {
+      const fresh = Date.now() - new Date(data.updated).getTime() < 24 * 60 * 60 * 1000;
+      if (Array.isArray(data.items) && fresh) {
         parsed = data.items;
         console.log('✅ Заміни завантажені з GitHub:', parsed.length, 'записів, оновлено', data.updated);
       }
