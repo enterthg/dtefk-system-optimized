@@ -8,7 +8,8 @@ const DEFAULT_SCHEDULE = [
 ];
 
 const WEATHER_COORDS = { lat: 48.45, lon: 34.98 }; // Дніпро
-const API_TIMEOUT = 5000;
+const API_TIMEOUT = 8000;
+const REPLACES_URL = 'https://dtrek.dp.ua/stud/class-replaces';
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 let schedule = [];
@@ -16,10 +17,6 @@ let allReplaces = [];
 let currentPage = 0;
 let weatherData = null;
 let currentAlertStatus = false;
-
-// Тестові дані для демонстрації тривог
-const DEMO_MODE = true;
-let demoAlertTimer = null;
 
 // ==================== ІНІЦІАЛІЗАЦІЯ ====================
 function init() {
@@ -31,80 +28,54 @@ function init() {
   
   setInterval(updateClock, 1000);
   setInterval(renderReplaces, 5000);
-  setInterval(fetchReplaces, 600000); // 10 хвилин
+  setInterval(fetchReplaces, 300000); // 5 хвилин
   setInterval(loadWeather, 1800000); // 30 хвилин
-  setInterval(checkAirAlerts, 10000); // Перевіра кожні 10 секунд
+  setInterval(checkAirAlerts, 30000); // Перевіра кожні 30 секунд
   
   console.log('✅ Система запущена');
   console.log('📡 Перевірка тривог активна');
-  console.log('🔄 Завантаження замін...');
+  console.log('🔄 Завантаження замін з:', REPLACES_URL);
 }
 
 // ==================== СИСТЕМА ТРИВОГ ====================
 async function checkAirAlerts() {
   try {
-    // Спробуємо кілька API джерел
-    let hasAlert = false;
+    const response = await fetch('https://api.ukrainealerts.com/v3/alerts', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000)
+    });
     
-    // Спроба 1: ukrainealerts.com
-    try {
-      const response = await fetch('https://api.ukrainealerts.com/v3/alerts', {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(3000)
-      });
+    if (response.ok) {
+      const data = await response.json();
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📡 Відповідь від ukrainealerts:', data);
-        
-        if (data.alerts && Array.isArray(data.alerts)) {
-          for (let alert of data.alerts) {
-            if (alert.location_title && alert.alert === true) {
-              const location = alert.location_title.toLowerCase();
-              if (location.includes('дніпро') || location.includes('днепр')) {
-                hasAlert = true;
-                console.log('🚨 Знайдена тривога:', alert.location_title);
-                break;
-              }
+      let hasAlert = false;
+      
+      if (data.alerts && Array.isArray(data.alerts)) {
+        for (let alert of data.alerts) {
+          if (alert.location_title && alert.alert === true) {
+            const location = alert.location_title.toLowerCase();
+            if (location.includes('дніпро') || 
+                location.includes('днепр') || 
+                location.includes('дніпропетровськ') ||
+                location.includes('днепропетровск')) {
+              hasAlert = true;
+              break;
             }
           }
         }
       }
-    } catch (e) {
-      console.warn('API 1 помилка:', e.message);
-    }
-    
-    // Спроба 2: Альтернативний API
-    if (!hasAlert) {
-      try {
-        const response = await fetch('https://ua-alerts.herokuapp.com/api/v1/alerts', {
-          signal: AbortSignal.timeout(3000)
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.alerts && data.alerts.Дніпропетровська) {
-            hasAlert = data.alerts.Дніпропетровська.alert;
-            console.log('📡 Відповідь від альт. API - Дніпро:', hasAlert);
-          }
-        }
-      } catch (e) {
-        console.warn('API 2 помилка:', e.message);
+      
+      if (hasAlert && !currentAlertStatus) {
+        showAirAlert();
+        currentAlertStatus = true;
+      } else if (!hasAlert && currentAlertStatus) {
+        hideAirAlert();
+        currentAlertStatus = false;
       }
     }
-    
-    // Оновлюємо статус
-    if (hasAlert && !currentAlertStatus) {
-      showAirAlert();
-      currentAlertStatus = true;
-    } else if (!hasAlert && currentAlertStatus) {
-      hideAirAlert();
-      currentAlertStatus = false;
-    }
-    
   } catch (e) {
-    console.error('Загальна помилка перевірки тривог:', e);
+    console.warn('⚠️ Помилка перевірки тривог:', e.message);
   }
 }
 
@@ -339,59 +310,91 @@ function playBell() {
 // ==================== ЗАМІНИ ====================
 async function fetchReplaces() {
   try {
-    // Спроба 1: Через CORS proxy
-    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent('https://dtrek.dp.ua/stud/class-replaces')}&t=${Date.now()}`;
+    console.log('🔄 Завантаження замін...');
     
-    const res = await Promise.race([
-      fetch(proxy),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
-    ]);
+    // Спроба завантажити напряму через CORS proxy
+    const corsProxies = [
+      `https://api.allorigins.win/get?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`,
+      `https://cors-anywhere.herokuapp.com/${REPLACES_URL}`
+    ];
     
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let loaded = false;
     
-    const data = await res.json();
-    
-    if (data.contents) {
-      const doc = new DOMParser().parseFromString(data.contents, 'text/html');
-      allReplaces = [];
-      const rows = doc.querySelectorAll('tr');
-
-      rows.forEach(row => {
-        const td = row.querySelectorAll('td');
-        if (td.length >= 2 && /\d/.test(td[0].innerText)) {
-          allReplaces.push({
-            group: td[0].innerText.trim(),
-            info: Array.from(td)
-              .slice(1, -1)
-              .map(c => c.innerText.trim())
-              .join(' ')
-              .replace(/-{2,}/g, '')
-              .trim(),
-            room: td[td.length - 1]?.innerText?.trim()?.replace(/-/g, '') || '--'
+    for (let proxy of corsProxies) {
+      if (loaded) break;
+      
+      try {
+        const res = await Promise.race([
+          fetch(proxy),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
+        ]);
+        
+        if (!res.ok) continue;
+        
+        const data = await res.json();
+        const htmlContent = data.contents || data;
+        
+        if (htmlContent) {
+          const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+          allReplaces = [];
+          
+          // Шукаємо таблиці
+          const tables = doc.querySelectorAll('table');
+          
+          tables.forEach(table => {
+            const rows = table.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+              const cells = row.querySelectorAll('td');
+              
+              if (cells.length >= 2) {
+                const group = cells[0]?.innerText?.trim();
+                const room = cells[cells.length - 1]?.innerText?.trim();
+                
+                // Збираємо інформацію про заміну
+                let info = Array.from(cells)
+                  .slice(1, cells.length - 1)
+                  .map(c => c.innerText.trim())
+                  .filter(t => t.length > 0)
+                  .join(' → ');
+                
+                if (group && /\d/.test(group)) {
+                  allReplaces.push({
+                    group: group,
+                    info: info || 'Змін розкладу',
+                    room: room?.replace(/-/g, '') || '--'
+                  });
+                }
+              }
+            });
           });
+          
+          if (allReplaces.length > 0) {
+            console.log('✅ Заміни завантажені:', allReplaces.length, 'записів');
+            loaded = true;
+          }
         }
-      });
-
-      console.log('✅ Заміни завантажені:', allReplaces.length, 'записів');
-    } else {
-      throw new Error('Невалідна відповідь');
+      } catch (e) {
+        console.warn(`Proxy ${proxy.split('/')[2]} не працює:`, e.message);
+      }
+    }
+    
+    if (!loaded) {
+      console.warn('❌ Не вдалося завантажити заміни');
+      showDemoReplaces();
     }
     
     currentPage = 0;
     renderReplaces();
   } catch (e) {
-    console.warn('❌ Помилка завантаження замін:', e.message);
-    
-    // Показуємо демо заміни, якщо основне не працює
+    console.error('💥 Критична помилка завантаження замін:', e);
     showDemoReplaces();
+    renderReplaces();
   }
 }
 
 function showDemoReplaces() {
-  const list = document.getElementById('replacesList');
-  
   if (allReplaces.length === 0) {
-    // Демо заміни для тестування
     allReplaces = [
       { group: "ПРО-21", info: "Укр. мова → Англійська мова", room: "304" },
       { group: "МН-20", info: "Математика → Фізика", room: "201" },
@@ -399,11 +402,8 @@ function showDemoReplaces() {
       { group: "БІ-22", info: "Біологія → Химія", room: "215" },
       { group: "ІС-21", info: "Історія → Географія", room: "308" }
     ];
-    
     console.log('📝 Показуються демо заміни');
   }
-  
-  renderReplaces();
 }
 
 function renderReplaces() {
