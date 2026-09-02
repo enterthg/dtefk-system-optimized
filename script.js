@@ -340,30 +340,37 @@ async function fetchReplaces() {
           
           // Шукаємо таблиці
           const tables = doc.querySelectorAll('table');
+          console.log('📊 Знайдено таблиць:', tables.length);
           
-          tables.forEach(table => {
+          tables.forEach((table, tableIdx) => {
             const rows = table.querySelectorAll('tr');
+            console.log(`📋 Таблиця ${tableIdx}: ${rows.length} рядків`);
             
-            rows.forEach(row => {
+            rows.forEach((row, rowIdx) => {
               const cells = row.querySelectorAll('td');
               
               if (cells.length >= 2) {
+                // Перший стовпець - це ЗАВЖДИ група
                 const group = cells[0]?.innerText?.trim();
+                
+                // Останній стовпець - кабінет
                 const room = cells[cells.length - 1]?.innerText?.trim();
                 
-                // Збираємо інформацію про заміну
+                // Все посередині - інформація про заміну
                 let info = Array.from(cells)
                   .slice(1, cells.length - 1)
                   .map(c => c.innerText.trim())
-                  .filter(t => t.length > 0)
+                  .filter(t => t && t.length > 0)
                   .join(' → ');
                 
-                if (group && /\d/.test(group)) {
+                // Перевіряємо, що це справді група (повинна містити літери та цифри та тире)
+                if (group && group.length > 0 && !group.match(/^[№\s-]*$/)) {
                   allReplaces.push({
                     group: group,
                     info: info || 'Змін розкладу',
-                    room: room?.replace(/-/g, '') || '--'
+                    room: room?.replace(/[-–—]/g, '').trim() || '--'
                   });
+                  console.log(`✓ Група: ${group} | Кабінет: ${room} | Інфо: ${info}`);
                 }
               }
             });
@@ -375,12 +382,12 @@ async function fetchReplaces() {
           }
         }
       } catch (e) {
-        console.warn(`Proxy ${proxy.split('/')[2]} не працює:`, e.message);
+        console.warn(`Proxy не працює:`, e.message);
       }
     }
     
     if (!loaded) {
-      console.warn('❌ Не вдалося завантажити заміни');
+      console.warn('❌ Не вдалося завантажити заміни з основного джерела');
       showDemoReplaces();
     }
     
@@ -396,9 +403,9 @@ async function fetchReplaces() {
 function showDemoReplaces() {
   if (allReplaces.length === 0) {
     allReplaces = [
-      { group: "ПРО-21", info: "Укр. мова → Англійська мова", room: "304" },
-      { group: "МН-20", info: "Математика → Фізика", room: "201" },
-      { group: "ІН-19", info: "Інформатика → Семінар", room: "105" },
+      { group: "081-24с-2", info: "Укр. мова → Англійська мова", room: "304" },
+      { group: "F7-25-2", info: "Математика → Фізика", room: "201" },
+      { group: "МН-20", info: "Інформатика → Семінар", room: "105" },
       { group: "БІ-22", info: "Біологія → Химія", room: "215" },
       { group: "ІС-21", info: "Історія → Географія", room: "308" }
     ];
