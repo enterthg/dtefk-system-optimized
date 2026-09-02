@@ -14,7 +14,7 @@ const REPLACES_URL = 'https://dtrek.dp.ua/stud/class-replaces';
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 let schedule = [];
 let allReplaces = [];
-let replacesError = false;
+let replacesError = null;
 let currentPage = 0;
 let weatherData = null;
 let currentAlertStatus = false;
@@ -411,9 +411,10 @@ function renderReplaces() {
   const list = document.getElementById('replacesList');
 
   if (allReplaces.length === 0) {
-    list.innerHTML = replacesError
-      ? "<div style='text-align:center;margin-top:50px;opacity:0.7;'>⚠️ Не вдалося завантажити заміни</div>"
-      : "<div style='text-align:center;margin-top:50px;opacity:0.7;'>✅ Замін немає</div>";
+    const text = replacesError === null
+      ? '⏳ Завантаження замін...'
+      : replacesError ? '⚠️ Не вдалося завантажити заміни' : '✅ Замін немає';
+    list.innerHTML = `<div style='text-align:center;margin-top:50px;opacity:0.7;'>${text}</div>`;
     document.getElementById('pageInfo').innerText = "0/0";
     return;
   }
