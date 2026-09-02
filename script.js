@@ -397,6 +397,7 @@ async function fetchReplaces() {
   if (parsed === null) {
     console.warn('❌ Не вдалося завантажити заміни');
     replacesError = true;
+    allReplaces = [];
   } else {
     replacesError = false;
     allReplaces = parsed;
