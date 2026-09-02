@@ -22,7 +22,6 @@ let replacesError = null;
 let currentPage = 0;
 let weatherData = null;
 let currentAlertStatus = null;
-let currentAlertKey = null;
 
 // ==================== ІНІЦІАЛІЗАЦІЯ ====================
 function init() {
@@ -44,6 +43,8 @@ function init() {
 }
 
 // ==================== СИСТЕМА ТРИВОГ ====================
+// Логіка як у bash-парсері: тривога — коли у відповіді є "type":"AIR",
+// відбій — коли "activeAlerts":[]; в інших випадках стан не змінюється.
 async function checkAirAlerts() {
   try {
     const response = await fetch(`${ALERTS_URL}?t=${Date.now()}`, {
@@ -55,60 +56,69 @@ async function checkAirAlerts() {
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const data = await response.json();
-    const regions = Array.isArray(data) ? data : [data];
-    const airAlert = regions
-      .flatMap(r => Array.isArray(r.activeAlerts) ? r.activeAlerts : [])
-      .find(a => a?.type === 'AIR');
+    const text = (await response.text()).replace(/\s+/g, '');
+    const hasAir = text.includes('"type":"AIR"');
+    const isEmpty = text.includes('"activeAlerts":[]');
 
-    setAlertStatus(!!airAlert, airAlert ? `${airAlert.regionId}|${airAlert.lastUpdate}` : null);
+    if (hasAir) {
+      setAlertStatus(true);
+    } else if (isEmpty) {
+      setAlertStatus(false);
+    } else {
+      renderAlertStatus(currentAlertStatus);
+    }
   } catch (e) {
     console.warn('⚠️ Помилка перевірки тривог:', e.message);
-    setAlertStatus(null);
+    if (currentAlertStatus === null) renderAlertStatus(null);
   }
 }
 
-function setAlertStatus(hasAlert, alertKey = null) {
-  const box = document.getElementById('alertStatus');
+function setAlertStatus(hasAlert) {
   const time = new Date().toLocaleTimeString('uk-UA');
 
-  if (hasAlert === null) {
-    box.className = 'unknown';
-    box.innerText = '❔ Статус тривоги невідомий';
-    return;
-  }
-
-  if (hasAlert) {
-    box.className = 'alert';
-    box.innerText = '🚨 ПОВІТРЯНА ТРИВОГА — ДНІПРО';
-    if (currentAlertStatus !== true || alertKey !== currentAlertKey) {
-      playAlertSound();
-      console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!', time);
-    }
-  } else {
-    box.className = 'calm';
-    box.innerText = '🟢 Тривоги немає';
-    if (currentAlertStatus === true) console.log('✅ Тривога завершена', time);
+  if (hasAlert && currentAlertStatus !== true) {
+    playAlertSound(true);
+    console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!', time);
+  } else if (!hasAlert && currentAlertStatus === true) {
+    playAlertSound(false);
+    console.log('✅ Тривога завершена', time);
   }
 
   currentAlertStatus = hasAlert;
-  currentAlertKey = alertKey;
+  renderAlertStatus(hasAlert);
 }
 
-function playAlertSound() {
+function renderAlertStatus(hasAlert) {
+  const box = document.getElementById('alertStatus');
+  if (hasAlert === null) {
+    box.className = 'unknown';
+    box.innerText = '❔ Статус тривоги невідомий';
+  } else if (hasAlert) {
+    box.className = 'alert';
+    box.innerText = '🚨 ПОВІТРЯНА ТРИВОГА — ДНІПРО';
+  } else {
+    box.className = 'calm';
+    box.innerText = '🟢 Тривоги немає';
+  }
+}
+
+function playAlertSound(on = true) {
   try {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.connect(gain);
-    gain.connect(audioContext.destination);
-    osc.frequency.value = 900;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-    osc.start(audioContext.currentTime);
-    osc.stop(audioContext.currentTime + 0.4);
+    const tones = on ? [900, 900, 900] : [600, 400];
+    tones.forEach((freq, i) => {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const t = audioContext.currentTime + i * 0.45;
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.15, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    });
   } catch (e) {
     console.warn('Помилка звуку:', e.message);
   }
