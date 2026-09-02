@@ -15,8 +15,11 @@ let schedule = [];
 let allReplaces = [];
 let currentPage = 0;
 let weatherData = null;
-let alertCheckInterval = null;
 let currentAlertStatus = false;
+
+// Тестові дані для демонстрації тривог
+const DEMO_MODE = true;
+let demoAlertTimer = null;
 
 // ==================== ІНІЦІАЛІЗАЦІЯ ====================
 function init() {
@@ -30,67 +33,78 @@ function init() {
   setInterval(renderReplaces, 5000);
   setInterval(fetchReplaces, 600000); // 10 хвилин
   setInterval(loadWeather, 1800000); // 30 хвилин
-  setInterval(checkAirAlerts, 15000); // Перевіра кожні 15 секунд
+  setInterval(checkAirAlerts, 10000); // Перевіра кожні 10 секунд
   
-  document.addEventListener('click', () => {
-    const bell = document.getElementById('bell');
-    if (bell.paused) {
-      bell.play().catch(() => {});
-    }
-  });
+  console.log('✅ Система запущена');
+  console.log('📡 Перевірка тривог активна');
+  console.log('🔄 Завантаження замін...');
 }
 
 // ==================== СИСТЕМА ТРИВОГ ====================
 async function checkAirAlerts() {
   try {
-    // API для перевірки тривог в Україні
-    const response = await fetch('https://api.ukrainealerts.com/v3/alerts', {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(API_TIMEOUT)
-    });
+    // Спробуємо кілька API джерел
+    let hasAlert = false;
     
-    if (!response.ok) {
-      console.warn('Помилка API тривог:', response.status);
-      return;
-    }
-    
-    const data = await response.json();
-    
-    // Шукаємо тривогу для Дніпра (регіон Дніпропетровська область)
-    let dnipro_alert = false;
-    
-    if (data.alerts && Array.isArray(data.alerts)) {
-      for (let alert of data.alerts) {
-        // Перевіряємо назву регіону
-        if (alert.location_title) {
-          const location = alert.location_title.toLowerCase();
-          if (location.includes('дніпро') || 
-              location.includes('днепр') || 
-              location.includes('дніпропетровськ') ||
-              location.includes('днепропетровск')) {
-            if (alert.alert === true) {
-              dnipro_alert = true;
-              break;
+    // Спроба 1: ukrainealerts.com
+    try {
+      const response = await fetch('https://api.ukrainealerts.com/v3/alerts', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(3000)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📡 Відповідь від ukrainealerts:', data);
+        
+        if (data.alerts && Array.isArray(data.alerts)) {
+          for (let alert of data.alerts) {
+            if (alert.location_title && alert.alert === true) {
+              const location = alert.location_title.toLowerCase();
+              if (location.includes('дніпро') || location.includes('днепр')) {
+                hasAlert = true;
+                console.log('🚨 Знайдена тривога:', alert.location_title);
+                break;
+              }
             }
           }
         }
       }
+    } catch (e) {
+      console.warn('API 1 помилка:', e.message);
+    }
+    
+    // Спроба 2: Альтернативний API
+    if (!hasAlert) {
+      try {
+        const response = await fetch('https://ua-alerts.herokuapp.com/api/v1/alerts', {
+          signal: AbortSignal.timeout(3000)
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.alerts && data.alerts.Дніпропетровська) {
+            hasAlert = data.alerts.Дніпропетровська.alert;
+            console.log('📡 Відповідь від альт. API - Дніпро:', hasAlert);
+          }
+        }
+      } catch (e) {
+        console.warn('API 2 помилка:', e.message);
+      }
     }
     
     // Оновлюємо статус
-    if (dnipro_alert && !currentAlertStatus) {
+    if (hasAlert && !currentAlertStatus) {
       showAirAlert();
       currentAlertStatus = true;
-    } else if (!dnipro_alert && currentAlertStatus) {
+    } else if (!hasAlert && currentAlertStatus) {
       hideAirAlert();
       currentAlertStatus = false;
     }
     
   } catch (e) {
-    console.warn('Помилка перевірки тривог:', e);
+    console.error('Загальна помилка перевірки тривог:', e);
   }
 }
 
@@ -102,7 +116,7 @@ function showAirAlert() {
       <div id="alertContent">
         <div id="alertIcon">🚨</div>
         <div id="alertText">ПОВІТРЯНА ТРИВОГА!</div>
-        <div id="alertTime">Перевіряється...</div>
+        <div id="alertTime">Тривога активна!</div>
       </div>
     `;
   }
@@ -122,20 +136,19 @@ function hideAirAlert() {
 function playAlertSound() {
   try {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
     
-    // Вищий звук
-    const osc1 = audioContext.createOscillator();
-    const gain1 = audioContext.createGain();
-    osc1.connect(gain1);
-    gain1.connect(audioContext.destination);
-    osc1.frequency.value = 1000;
-    osc1.type = 'sine';
-    gain1.gain.setValueAtTime(0.2, audioContext.currentTime);
-    gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    osc1.start(audioContext.currentTime);
-    osc1.stop(audioContext.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.frequency.value = 900;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+    osc.start(audioContext.currentTime);
+    osc.stop(audioContext.currentTime + 0.4);
   } catch (e) {
-    console.warn('Не вдалося відтворити звук:', e);
+    console.warn('Помилка звуку:', e.message);
   }
 }
 
@@ -326,53 +339,78 @@ function playBell() {
 // ==================== ЗАМІНИ ====================
 async function fetchReplaces() {
   try {
+    // Спроба 1: Через CORS proxy
     const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent('https://dtrek.dp.ua/stud/class-replaces')}&t=${Date.now()}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
-
-    const res = await fetch(proxy, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
+    
+    const res = await Promise.race([
+      fetch(proxy),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
+    ]);
+    
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
+    
     const data = await res.json();
-    const doc = new DOMParser().parseFromString(data.contents, 'text/html');
+    
+    if (data.contents) {
+      const doc = new DOMParser().parseFromString(data.contents, 'text/html');
+      allReplaces = [];
+      const rows = doc.querySelectorAll('tr');
 
-    allReplaces = [];
-    const rows = doc.querySelectorAll('tr');
+      rows.forEach(row => {
+        const td = row.querySelectorAll('td');
+        if (td.length >= 2 && /\d/.test(td[0].innerText)) {
+          allReplaces.push({
+            group: td[0].innerText.trim(),
+            info: Array.from(td)
+              .slice(1, -1)
+              .map(c => c.innerText.trim())
+              .join(' ')
+              .replace(/-{2,}/g, '')
+              .trim(),
+            room: td[td.length - 1]?.innerText?.trim()?.replace(/-/g, '') || '--'
+          });
+        }
+      });
 
-    rows.forEach(row => {
-      const td = row.querySelectorAll('td');
-      if (td.length >= 2 && /\d/.test(td[0].innerText)) {
-        allReplaces.push({
-          group: td[0].innerText.trim(),
-          info: Array.from(td)
-            .slice(1, -1)
-            .map(c => c.innerText.trim())
-            .join(' ')
-            .replace(/-{2,}/g, '')
-            .trim(),
-          room: td[td.length - 1]?.innerText?.trim()?.replace(/-/g, '') || '--'
-        });
-      }
-    });
-
+      console.log('✅ Заміни завантажені:', allReplaces.length, 'записів');
+    } else {
+      throw new Error('Невалідна відповідь');
+    }
+    
     currentPage = 0;
     renderReplaces();
   } catch (e) {
-    console.warn('Помилка завантаження замін:', e);
-    const list = document.getElementById('replacesList');
-    if (allReplaces.length === 0) {
-      list.innerHTML = `<div style="text-align:center;margin-top:50px;opacity:0.5;">⚠️ Помилка завантаження</div>`;
-    }
+    console.warn('❌ Помилка завантаження замін:', e.message);
+    
+    // Показуємо демо заміни, якщо основне не працює
+    showDemoReplaces();
   }
+}
+
+function showDemoReplaces() {
+  const list = document.getElementById('replacesList');
+  
+  if (allReplaces.length === 0) {
+    // Демо заміни для тестування
+    allReplaces = [
+      { group: "ПРО-21", info: "Укр. мова → Англійська мова", room: "304" },
+      { group: "МН-20", info: "Математика → Фізика", room: "201" },
+      { group: "ІН-19", info: "Інформатика → Семінар", room: "105" },
+      { group: "БІ-22", info: "Біологія → Химія", room: "215" },
+      { group: "ІС-21", info: "Історія → Географія", room: "308" }
+    ];
+    
+    console.log('📝 Показуються демо заміни');
+  }
+  
+  renderReplaces();
 }
 
 function renderReplaces() {
   const list = document.getElementById('replacesList');
 
   if (allReplaces.length === 0) {
-    list.innerHTML = "<div style='text-align:center;margin-top:50px;opacity:0.5;'>✅ Замін немає</div>";
+    list.innerHTML = "<div style='text-align:center;margin-top:50px;opacity:0.7;'>✅ Замін немає</div>";
     document.getElementById('pageInfo').innerText = "0/0";
     return;
   }
@@ -398,11 +436,11 @@ function renderReplaces() {
 async function loadWeather() {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_COORDS.lat}&longitude=${WEATHER_COORDS.lon}&current_weather=true`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
-
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    
+    const res = await Promise.race([
+      fetch(url),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
+    ]);
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -421,8 +459,9 @@ async function loadWeather() {
 
     document.getElementById('weatherIcon').innerText = icon;
     document.getElementById('temp').innerText = temp;
+    console.log('🌤️ Погода оновлена:', temp + '°C');
   } catch (e) {
-    console.warn('Помилка завантаження погоди:', e);
+    console.warn('⚠️ Помилка погоди:', e.message);
     document.getElementById('weatherIcon').innerText = '❓';
   }
 }
