@@ -22,6 +22,7 @@ let replacesError = null;
 let currentPage = 0;
 let weatherData = null;
 let currentAlertStatus = null;
+let currentAlertKey = null;
 
 // ==================== ІНІЦІАЛІЗАЦІЯ ====================
 function init() {
@@ -56,18 +57,18 @@ async function checkAirAlerts() {
 
     const data = await response.json();
     const regions = Array.isArray(data) ? data : [data];
-    const hasAlert = regions.some(r =>
-      Array.isArray(r.activeAlerts) && r.activeAlerts.some(a => a?.type === 'AIR')
-    );
+    const airAlert = regions
+      .flatMap(r => Array.isArray(r.activeAlerts) ? r.activeAlerts : [])
+      .find(a => a?.type === 'AIR');
 
-    setAlertStatus(hasAlert);
+    setAlertStatus(!!airAlert, airAlert ? `${airAlert.regionId}|${airAlert.lastUpdate}` : null);
   } catch (e) {
     console.warn('⚠️ Помилка перевірки тривог:', e.message);
     setAlertStatus(null);
   }
 }
 
-function setAlertStatus(hasAlert) {
+function setAlertStatus(hasAlert, alertKey = null) {
   const box = document.getElementById('alertStatus');
   const time = new Date().toLocaleTimeString('uk-UA');
 
@@ -80,7 +81,7 @@ function setAlertStatus(hasAlert) {
   if (hasAlert) {
     box.className = 'alert';
     box.innerText = '🚨 ПОВІТРЯНА ТРИВОГА — ДНІПРО';
-    if (currentAlertStatus !== true) {
+    if (currentAlertStatus !== true || alertKey !== currentAlertKey) {
       playAlertSound();
       console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!', time);
     }
@@ -91,6 +92,7 @@ function setAlertStatus(hasAlert) {
   }
 
   currentAlertStatus = hasAlert;
+  currentAlertKey = alertKey;
 }
 
 function playAlertSound() {
