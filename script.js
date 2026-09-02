@@ -11,6 +11,9 @@ const WEATHER_COORDS = { lat: 48.45, lon: 34.98 }; // Дніпро
 const API_TIMEOUT = 8000;
 const REPLACES_URL = 'https://dtrek.dp.ua/stud/class-replaces';
 const REPLACES_JSON_URL = 'https://raw.githubusercontent.com/enterthg/dtefk-system-optimized/main/replaces.json';
+const ALERTS_URL = 'https://api.ukrainealarm.com/api/v3/alerts/332'; // Дніпро
+const ALERTS_TOKEN = '57c8ab9623e82fbb523918c561570727';
+const ALERTS_INTERVAL = 10000;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 let schedule = [];
@@ -18,7 +21,7 @@ let allReplaces = [];
 let replacesError = null;
 let currentPage = 0;
 let weatherData = null;
-let currentAlertStatus = false;
+let currentAlertStatus = null;
 
 // ==================== ІНІЦІАЛІЗАЦІЯ ====================
 function init() {
@@ -32,7 +35,7 @@ function init() {
   setInterval(renderReplaces, 5000);
   setInterval(fetchReplaces, 300000); // 5 хвилин
   setInterval(loadWeather, 1800000); // 30 хвилин
-  setInterval(checkAirAlerts, 30000); // Перевіра кожні 30 секунд
+  setInterval(checkAirAlerts, ALERTS_INTERVAL);
   
   console.log('✅ Система запущена');
   console.log('📡 Перевірка тривог активна');
@@ -42,68 +45,49 @@ function init() {
 // ==================== СИСТЕМА ТРИВОГ ====================
 async function checkAirAlerts() {
   try {
-    const response = await fetch('https://api.ukrainealerts.com/v3/alerts', {
+    const response = await fetch(`${ALERTS_URL}?t=${Date.now()}`, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(5000)
+      headers: { 'Accept': 'application/json', 'Authorization': ALERTS_TOKEN },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(ALERTS_INTERVAL - 1000)
     });
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      let hasAlert = false;
-      
-      if (data.alerts && Array.isArray(data.alerts)) {
-        for (let alert of data.alerts) {
-          if (alert.location_title && alert.alert === true) {
-            const location = alert.location_title.toLowerCase();
-            if (location.includes('дніпро') || 
-                location.includes('днепр') || 
-                location.includes('дніпропетровськ') ||
-                location.includes('днепропетровск')) {
-              hasAlert = true;
-              break;
-            }
-          }
-        }
-      }
-      
-      if (hasAlert && !currentAlertStatus) {
-        showAirAlert();
-        currentAlertStatus = true;
-      } else if (!hasAlert && currentAlertStatus) {
-        hideAirAlert();
-        currentAlertStatus = false;
-      }
-    }
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    const regions = Array.isArray(data) ? data : [data];
+    const hasAlert = regions.some(r =>
+      Array.isArray(r.activeAlerts) && r.activeAlerts.length > 0
+    );
+
+    setAlertStatus(hasAlert);
   } catch (e) {
     console.warn('⚠️ Помилка перевірки тривог:', e.message);
+    setAlertStatus(null);
   }
 }
 
-function showAirAlert() {
-  const alertBox = document.getElementById('airAlertBox');
-  
-  if (!alertBox.innerHTML.includes('alertContent')) {
-    alertBox.innerHTML = `
-      <div id="alertContent">
-        <div id="alertIcon">🚨</div>
-        <div id="alertText">ПОВІТРЯНА ТРИВОГА!</div>
-        <div id="alertTime">Тривога активна!</div>
-      </div>
-    `;
-  }
-  
-  alertBox.classList.add('active');
-  playAlertSound();
-  
-  console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!', new Date().toLocaleTimeString('uk-UA'));
-}
+function setAlertStatus(hasAlert) {
+  const box = document.getElementById('alertStatus');
+  const time = new Date().toLocaleTimeString('uk-UA');
 
-function hideAirAlert() {
-  const alertBox = document.getElementById('airAlertBox');
-  alertBox.classList.remove('active');
-  console.log('✅ Тривога завершена', new Date().toLocaleTimeString('uk-UA'));
+  if (hasAlert === null) {
+    box.className = 'unknown';
+    box.innerText = '❔ Статус тривоги невідомий';
+  } else if (hasAlert) {
+    box.className = 'alert';
+    box.innerText = '🚨 ПОВІТРЯНА ТРИВОГА — ДНІПРО';
+    if (currentAlertStatus !== true) {
+      playAlertSound();
+      console.log('🚨 ПОВІТРЯНА ТРИВОГА У ДНІПРІ!', time);
+    }
+  } else {
+    box.className = 'calm';
+    box.innerText = '🟢 Тривоги немає';
+    if (currentAlertStatus === true) console.log('✅ Тривога завершена', time);
+  }
+
+  currentAlertStatus = hasAlert;
 }
 
 function playAlertSound() {
