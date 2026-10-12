@@ -605,32 +605,32 @@
 
       <div class="style-control">
         <label>🖼️ Висота логотипу: <span id="val_logoHeight">80px</span></label>
-        <input type="range" id="size_logoHeight" min="40" max="150" value="80" oninput="updateSize('logoHeight', this.value, 'px')">
+        <input type="range" id="size_logoHeight" min="30" max="300" value="80" oninput="updateSize('logoHeight', this.value, 'px')">
       </div>
 
       <div class="style-control">
         <label>🚨 Розмір статусу тривоги: <span id="val_alertFont">26px</span></label>
-        <input type="range" id="size_alertFont" min="14" max="45" value="26" oninput="updateSize('alertFont', this.value, 'px')">
+        <input type="range" id="size_alertFont" min="14" max="80" value="26" oninput="updateSize('alertFont', this.value, 'px')">
       </div>
 
       <div class="style-control">
         <label>⏰ Розмір годинника: <span id="val_clockFont">100px</span></label>
-        <input type="range" id="size_clockFont" min="40" max="160" value="100" oninput="updateSize('clockFont', this.value, 'px')">
+        <input type="range" id="size_clockFont" min="30" max="300" value="100" oninput="updateSize('clockFont', this.value, 'px')">
       </div>
 
       <div class="style-control">
         <label>📅 Розмір дати: <span id="val_dateFont">16px</span></label>
-        <input type="range" id="size_dateFont" min="12" max="30" value="16" oninput="updateSize('dateFont', this.value, 'px')">
+        <input type="range" id="size_dateFont" min="10" max="50" value="16" oninput="updateSize('dateFont', this.value, 'px')">
       </div>
 
       <div class="style-control">
         <label>🔔 Розмір статусу пари: <span id="val_lessonFont">32px</span></label>
-        <input type="range" id="size_lessonFont" min="16" max="50" value="32" oninput="updateSize('lessonFont', this.value, 'px')">
+        <input type="range" id="size_lessonFont" min="16" max="100" value="32" oninput="updateSize('lessonFont', this.value, 'px')">
       </div>
 
       <div class="style-control">
         <label>📝 Розмір шрифту замін: <span id="val_replacesFont">13px</span></label>
-        <input type="range" id="size_replacesFont" min="10" max="24" value="13" oninput="updateSize('replacesFont', this.value, 'px')">
+        <input type="range" id="size_replacesFont" min="8" max="32" value="13" oninput="updateSize('replacesFont', this.value, 'px')">
       </div>
 
       <button onclick="resetDisplaySizes()" class="btn-backup" style="background: #e74c3c; width: 100%; margin-top: 10px;">🔄 Скинути розміри та фон до дефолтних</button>
@@ -640,7 +640,7 @@
   <div class="container">
     <div class="header">
       <div class="logo">
-        <img src="logo.webp" alt="Лого" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22%3E%3Crect fill=%22%2300fff5%22 width=%22180%22 height=%22180%22/%3E%3Ctext x=%2290%22 y=%22100%22 font-size=%2240%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%231a2a6c%22%3EДТЕФК%3C/text%3E%3C/svg%3E'">
+        <img src="logo.webp" alt="Лого" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22%3E%3Crect fill=%2200fff5%22 width=%22180%22 height=%22180%22 rx=%2220%22/%3E%3Ctext x=%2290%22 y=%22120%22 font-size=%2270%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%230f172a%22%3EДТЕФК%3C/text%3E%3C/svg%3E'">
       </div>
       <div class="weather"><span id="weatherIcon">☀️</span><span id="temp">--</span>°</div>
     </div>
