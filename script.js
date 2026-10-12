@@ -264,7 +264,7 @@ async function checkAirAlerts() {
 
     setAlertStatus(hasAlert);
   } catch (e) {
-    console.warn('⚠️ Помилка перевірки три��ог:', e.message);
+    console.warn('⚠️ Помилка перевірки тривог:', e.message);
     setAlertStatus(null);
   }
 }
@@ -448,7 +448,7 @@ function updateClock() {
 
   const dateEl = document.getElementById('date');
   if (dateEl) {
-    dateEl.innerText = `${days[now.getDay()]} • ${now.getDate()} ${months[now.getMonth()]}`;
+    dateEl.innerText = `${days[now.getDay()]} • ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
   }
 
   const hm = timeStr.substring(0, 5);
