@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>ДТЕФК - Система розкладу</title>
   <style>
@@ -540,16 +541,17 @@
     }
 
     #alertStatus.alert {
-      border-color: #ff0000;
-      background: rgba(255, 0, 0, 0.25);
-      color: #ff2b2b;
-      text-shadow: 0 0 25px rgba(255, 0, 0, 1);
+      border-color: #ffffff;
+      background: #d90000;
+      color: #ffffff;
+      font-weight: 900;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
       animation: alertBlink 0.8s infinite;
     }
 
     @keyframes alertBlink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.25; }
+      0%, 100% { background: #d90000; box-shadow: 0 0 25px rgba(255, 0, 0, 0.9); }
+      50% { background: #ff1a1a; box-shadow: 0 0 45px rgba(255, 0, 0, 1); }
     }
 
     @media (max-width: 900px) {
@@ -673,7 +675,7 @@
   <div class="container">
     <div class="header">
       <div class="logo">
-        <img src="logo.webp" alt="Лого" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22%3E%3Crect fill=%2200fff5%22 width=%22180%22 height=%22180%22 rx=%2220%22/%3E%3Ctext x=%2290%22 y=%22120%22 font-size=%2270%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%230f172a%22%3EДТЕФК%3C/text%3E%3C/svg%3E'">
+        <img src="logo.webp" alt="Лого" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22%3E%3Crect fill=%2200fff5%22 width=%22180%22 height=%22180%22/%3E%3C/svg%3E'">
       </div>
       <div class="weather"><span id="weatherIcon">☀️</span><span id="temp">--</span>°</div>
     </div>
