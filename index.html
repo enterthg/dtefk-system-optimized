@@ -51,6 +51,16 @@
       opacity: 1;
     }
 
+    .bg-video-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
     .bg-iframe-layer {
       position: absolute;
       top: 0;
@@ -354,6 +364,7 @@
     }
 
     .style-control input[type="text"],
+    .style-control input[type="file"],
     .style-control select,
     .style-control textarea {
       width: 100%;
@@ -369,6 +380,12 @@
     .style-control textarea {
       resize: vertical;
       min-height: 65px;
+    }
+
+    .local-file-name {
+      font-size: 12px;
+      opacity: 0.8;
+      word-break: break-all;
     }
 
     .section-title {
@@ -544,6 +561,7 @@
   <div class="bg-container">
     <div id="bgLayer1" class="bg-image-layer"></div>
     <div id="bgLayer2" class="bg-image-layer"></div>
+    <video id="bgVideo" class="bg-video-layer" muted loop playsinline autoplay></video>
     <iframe id="bgIframe" class="bg-iframe-layer" src="about:blank"></iframe>
   </div>
   <div class="bg-overlay"></div>
@@ -577,9 +595,10 @@
       <div class="style-control">
         <label>Тип фону:</label>
         <select id="bgType" onchange="handleBgTypeChange(this.value)">
-          <option value="image">Статична картинка</option>
+          <option value="image">Статична картинка (URL)</option>
           <option value="slideshow">Слайд-шоу</option>
-          <option value="iframe">HTML5 / Сайт (iframe)</option>
+          <option value="iframe">HTML5 / Сайт (iframe, URL)</option>
+          <option value="local">📁 Локальний файл (фото / відео / HTML5)</option>
         </select>
       </div>
 
@@ -601,6 +620,13 @@
       <div class="style-control bg-field bg-field-iframe" style="display:none;">
         <label>URL веб-сторінки / HTML5 вмісту:</label>
         <input type="text" id="bgIframeUrl" placeholder="https://..." onchange="saveBgSettings()">
+      </div>
+
+      <div class="style-control bg-field bg-field-local" style="display:none;">
+        <label>Файл з пристрою (фото, відео, .html):</label>
+        <input type="file" id="bgLocalFile" accept="image/*,video/*,.html,.htm,text/html" onchange="handleLocalFile(this)">
+        <div class="local-file-name" id="bgLocalFileName">Файл не вибрано</div>
+        <button onclick="clearLocalFile()" class="btn-backup" style="background: #e74c3c; margin-top: 6px;">🗑️ Видалити файл</button>
       </div>
 
       <div class="section-title">📐 Розміри елементів</div>
