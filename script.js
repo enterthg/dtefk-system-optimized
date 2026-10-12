@@ -170,6 +170,85 @@ function loadBgSettings() {
   applyBgSettings(config);
 }
 
+let localBgUrl = null;
+
+function openBgDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('dtefk_bg_db', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('files');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function bgDbRun(mode, fn) {
+  const db = await openBgDb();
+  return new Promise((resolve, reject) => {
+    const req = fn(db.transaction('files', mode).objectStore('files'));
+    req.onsuccess = () => { db.close(); resolve(req.result); };
+    req.onerror = () => { db.close(); reject(req.error); };
+  });
+}
+
+function setLocalFileName(name) {
+  const el = document.getElementById('bgLocalFileName');
+  if (el) el.innerText = name || 'Файл не вибрано';
+}
+
+async function handleLocalFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    await bgDbRun('readwrite', store => store.put(file, 'bg'));
+  } catch (e) {
+    console.warn('Не вдалося зберегти файл фону:', e.message);
+  }
+  localStorage.setItem('dtefk_bg_local_name', file.name);
+  setLocalFileName(file.name);
+  saveBgSettings();
+}
+
+async function clearLocalFile() {
+  try {
+    await bgDbRun('readwrite', store => store.delete('bg'));
+  } catch (e) {
+    console.warn('Не вдалося видалити файл фону:', e.message);
+  }
+  localStorage.removeItem('dtefk_bg_local_name');
+  const input = document.getElementById('bgLocalFile');
+  if (input) input.value = '';
+  setLocalFileName('');
+  applyBgSettings({ ...DEFAULT_BG, ...JSON.parse(localStorage.getItem('dtefk_bg') || '{}') });
+}
+
+async function applyLocalBg(layer1, layer2, iframe, video) {
+  let file = null;
+  try {
+    file = await bgDbRun('readonly', store => store.get('bg'));
+  } catch (e) {
+    console.warn('Не вдалося прочитати файл фону:', e.message);
+  }
+  if (!file) return;
+
+  if (localBgUrl) URL.revokeObjectURL(localBgUrl);
+  localBgUrl = URL.createObjectURL(file);
+  setLocalFileName(localStorage.getItem('dtefk_bg_local_name') || file.name);
+
+  const name = (file.name || '').toLowerCase();
+  if (file.type.startsWith('video/')) {
+    video.src = localBgUrl;
+    video.style.display = 'block';
+    video.play().catch(() => {});
+  } else if (file.type === 'text/html' || /\.html?$/.test(name)) {
+    iframe.style.display = 'block';
+    iframe.src = localBgUrl;
+  } else {
+    layer1.style.backgroundImage = `url("${localBgUrl}")`;
+    layer1.classList.add('active');
+    layer2.classList.remove('active');
+  }
+}
+
 function applyBgSettings(config) {
   if (slideshowTimer) {
     clearInterval(slideshowTimer);
@@ -179,7 +258,14 @@ function applyBgSettings(config) {
   const layer1 = document.getElementById('bgLayer1');
   const layer2 = document.getElementById('bgLayer2');
   const iframe = document.getElementById('bgIframe');
+  const video = document.getElementById('bgVideo');
   if (!layer1 || !layer2 || !iframe) return;
+
+  if (video) {
+    video.pause();
+    video.removeAttribute('src');
+    video.style.display = 'none';
+  }
 
   if (config.type === 'iframe') {
     layer1.classList.remove('active');
@@ -191,6 +277,13 @@ function applyBgSettings(config) {
 
   iframe.style.display = 'none';
   iframe.src = 'about:blank';
+
+  if (config.type === 'local') {
+    layer1.classList.remove('active');
+    layer2.classList.remove('active');
+    if (video) applyLocalBg(layer1, layer2, iframe, video);
+    return;
+  }
 
   if (config.type === 'image') {
     layer1.style.backgroundImage = `url('${config.imageUrl}')`;
