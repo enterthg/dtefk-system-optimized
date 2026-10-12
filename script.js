@@ -8,6 +8,7 @@ const DEFAULT_SCHEDULE = [
 
 const DEFAULT_SIZES = {
   logoHeight: 80,
+  weatherFont: 50,
   alertFont: 26,
   clockFont: 100,
   dateFont: 16,
@@ -37,7 +38,7 @@ const ALERTS_INTERVAL = 10000;
 let schedule = [];
 let allReplaces = [];
 let replacesError = null;
-let currentDateIndex = 0;
+let currentPageIndex = 0;
 let allDatesWithReplaces = [];
 let weatherData = null;
 let currentAlertStatus = null;
@@ -45,6 +46,7 @@ let replacesUpdatedTime = null;
 let slideshowTimer = null;
 let slideshowIndex = 0;
 let activeBgLayer = 1;
+let replacesPageTimer = null;
 
 function init() {
   loadDisplaySizes();
@@ -57,7 +59,6 @@ function init() {
   checkAirAlerts();
 
   setInterval(updateClock, 1000);
-  setInterval(renderReplaces, 5000);
   setInterval(fetchReplaces, 300000);
   setInterval(loadWeather, 1800000);
   setInterval(checkAirAlerts, ALERTS_INTERVAL);
@@ -68,6 +69,7 @@ function init() {
 function updateSize(key, value, unit = 'px') {
   const mapping = {
     logoHeight: '--logo-height',
+    weatherFont: '--weather-font-size',
     alertFont: '--alert-font-size',
     clockFont: '--clock-font-size',
     dateFont: '--date-font-size',
@@ -262,7 +264,7 @@ async function checkAirAlerts() {
 
     setAlertStatus(hasAlert);
   } catch (e) {
-    console.warn('⚠️ Помилка перевірки тривог:', e.message);
+    console.warn('⚠️ Помилка перевірки три��ог:', e.message);
     setAlertStatus(null);
   }
 }
@@ -639,7 +641,8 @@ async function fetchReplaces() {
     allDatesWithReplaces = uniqueDates;
   }
 
-  currentDateIndex = 0;
+  currentPageIndex = 0;
+  startReplacesAutoScroll();
   renderReplaces();
 }
 
@@ -650,6 +653,19 @@ function formatReplaceDate(dateStr) {
   const day = d.getDate();
   const month = new Intl.DateTimeFormat('uk-UA', { month: 'long' }).format(d);
   return `${day} ${month} (${weekday})`;
+}
+
+function startReplacesAutoScroll() {
+  if (replacesPageTimer) {
+    clearInterval(replacesPageTimer);
+    replacesPageTimer = null;
+  }
+
+  if (!allReplaces.length || !allDatesWithReplaces.length) return;
+
+  replacesPageTimer = setInterval(() => {
+    renderReplaces();
+  }, 10000);
 }
 
 function renderReplaces() {
@@ -668,11 +684,17 @@ function renderReplaces() {
     allDatesWithReplaces = [new Date().toISOString().split('T')[0]];
   }
 
-  const currentDate = allDatesWithReplaces[currentDateIndex % allDatesWithReplaces.length];
-  const itemsForDate = allReplaces.filter(item => (item.date || new Date().toISOString().split('T')[0]) === currentDate);
+  const currentDate = allDatesWithReplaces[currentPageIndex % allDatesWithReplaces.length];
+  let itemsForDate = allReplaces.filter(item => (item.date || new Date().toISOString().split('T')[0]) === currentDate);
+
+  const ITEMS_PER_PAGE = 12;
+  const pageNumber = Math.floor(currentPageIndex / allDatesWithReplaces.length);
+  const startIdx = (pageNumber % Math.ceil(itemsForDate.length / ITEMS_PER_PAGE)) * ITEMS_PER_PAGE;
+  const endIdx = startIdx + ITEMS_PER_PAGE;
+  const pageItems = itemsForDate.slice(startIdx, endIdx);
 
   const header = `▼ Зміни до розкладу на ${formatReplaceDate(currentDate)}`;
-  const rows = itemsForDate.map(item => `
+  const rows = pageItems.map(item => `
     <tr>
       <td style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.12);font-weight:700;color:#ecfeff;">${escapeHtml(item.group)}</td>
       <td style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.12);color:#eaf7ff;">${escapeHtml(item.info)}</td>
@@ -698,13 +720,15 @@ function renderReplaces() {
     </div>
   `;
 
-  currentDateIndex = (currentDateIndex + 1) % allDatesWithReplaces.length;
+  currentPageIndex++;
 
   const pageInfo = document.getElementById('pageInfo');
   if (pageInfo) {
+    const totalPages = Math.ceil(itemsForDate.length / ITEMS_PER_PAGE);
+    const currentShowPage = (pageNumber % totalPages) + 1;
     const info = replacesUpdatedTime ? `${replacesUpdatedTime} • ` : '';
-    const counter = `${(currentDateIndex % allDatesWithReplaces.length) + 1} / ${allDatesWithReplaces.length}`;
-    pageInfo.innerText = `${info}${counter} • ${itemsForDate.length} замін`;
+    const dateCounter = `${(currentPageIndex % allDatesWithReplaces.length) || allDatesWithReplaces.length} / ${allDatesWithReplaces.length}`;
+    pageInfo.innerText = `${info}${currentShowPage} / ${totalPages || 1} • ${pageItems.length} замін`;
   }
 }
 
