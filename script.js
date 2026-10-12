@@ -1,11 +1,31 @@
-// ==================== КОНСТАНТИ ====================
 const DEFAULT_SCHEDULE = [
-  { lesson: "1", start: "08:30", end: "09:50" },
-  { lesson: "2", start: "10:00", end: "11:20" },
-  { lesson: "3", start: "11:30", end: "12:50" },
-  { lesson: "4", start: "13:00", end: "14:20" },
-  { lesson: "5", start: "14:30", end: "15:50" }
+  { lesson: '1', start: '08:30', end: '09:50' },
+  { lesson: '2', start: '10:00', end: '11:20' },
+  { lesson: '3', start: '11:30', end: '12:50' },
+  { lesson: '4', start: '13:00', end: '14:20' },
+  { lesson: '5', start: '14:30', end: '15:50' }
 ];
+
+const DEFAULT_SIZES = {
+  logoHeight: 80,
+  alertFont: 26,
+  clockFont: 100,
+  dateFont: 16,
+  lessonFont: 32,
+  replacesFont: 13
+};
+
+const DEFAULT_BG = {
+  type: 'image',
+  imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
+  slideshowUrls: [
+    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
+    'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&h=1080&fit=crop',
+    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&h=1080&fit=crop'
+  ].join('\n'),
+  slideshowInterval: 10,
+  iframeUrl: 'https://threejs.org/examples/webgl_geometry_cube.html'
+};
 
 const WEATHER_COORDS = { lat: 48.45, lon: 34.98 };
 const API_TIMEOUT = 8000;
@@ -22,9 +42,15 @@ let allDatesWithReplaces = [];
 let weatherData = null;
 let currentAlertStatus = null;
 let replacesUpdatedTime = null;
+let slideshowTimer = null;
+let slideshowIndex = 0;
+let activeBgLayer = 1;
 
 function init() {
+  loadDisplaySizes();
+  loadBgSettings();
   loadSchedule();
+  renderInputs();
   updateClock();
   loadWeather();
   fetchReplaces();
@@ -39,11 +65,181 @@ function init() {
   console.log('✅ Система запущена');
 }
 
+function updateSize(key, value, unit = 'px') {
+  const mapping = {
+    logoHeight: '--logo-height',
+    alertFont: '--alert-font-size',
+    clockFont: '--clock-font-size',
+    dateFont: '--date-font-size',
+    lessonFont: '--lesson-font-size',
+    replacesFont: '--replaces-font-size'
+  };
+
+  const root = document.documentElement;
+  const cssName = mapping[key];
+  if (cssName) {
+    root.style.setProperty(cssName, `${value}${unit}`);
+  }
+
+  const label = document.getElementById(`val_${key}`);
+  if (label) label.innerText = `${value}${unit}`;
+
+  const saved = JSON.parse(localStorage.getItem('dtefk_sizes') || '{}');
+  saved[key] = Number(value);
+  localStorage.setItem('dtefk_sizes', JSON.stringify(saved));
+}
+
+function loadDisplaySizes() {
+  const saved = JSON.parse(localStorage.getItem('dtefk_sizes') || '{}');
+  const values = { ...DEFAULT_SIZES, ...saved };
+
+  Object.entries(values).forEach(([key, value]) => {
+    const input = document.getElementById(`size_${key}`);
+    if (input) input.value = value;
+    updateSize(key, Number(value), 'px');
+  });
+}
+
+function resetDisplaySizes() {
+  localStorage.removeItem('dtefk_sizes');
+  localStorage.removeItem('dtefk_bg');
+  loadDisplaySizes();
+  loadBgSettings();
+  alert('✅ Розміри і фон скинуті до стандартних');
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+  const tab = document.getElementById(tabId);
+  if (tab) tab.classList.add('active');
+
+  const button = Array.from(document.querySelectorAll('.tab-btn')).find(el => el.getAttribute('onclick') && el.getAttribute('onclick').includes(tabId));
+  if (button) button.classList.add('active');
+}
+
+function handleBgTypeChange(type) {
+  const fields = document.querySelectorAll('.bg-field');
+  fields.forEach(el => {
+    const shouldShow = el.classList.contains(`bg-field-${type}`);
+    el.style.display = shouldShow ? 'flex' : 'none';
+  });
+
+  const sel = document.getElementById('bgType');
+  if (sel) sel.value = type;
+
+  saveBgSettings();
+}
+
+function saveBgSettings() {
+  const type = document.getElementById('bgType')?.value || DEFAULT_BG.type;
+  const imageUrl = document.getElementById('bgImageUrl')?.value.trim() || DEFAULT_BG.imageUrl;
+  const slideshowUrls = document.getElementById('bgSlideshowUrls')?.value || DEFAULT_BG.slideshowUrls;
+  const slideshowInterval = Number(document.getElementById('bgInterval')?.value || DEFAULT_BG.slideshowInterval);
+  const iframeUrl = document.getElementById('bgIframeUrl')?.value.trim() || DEFAULT_BG.iframeUrl;
+
+  const config = { type, imageUrl, slideshowUrls, slideshowInterval, iframeUrl };
+  localStorage.setItem('dtefk_bg', JSON.stringify(config));
+  applyBgSettings(config);
+}
+
+function loadBgSettings() {
+  const saved = JSON.parse(localStorage.getItem('dtefk_bg') || '{}');
+  const config = { ...DEFAULT_BG, ...saved };
+
+  const bgType = document.getElementById('bgType');
+  const bgImageUrl = document.getElementById('bgImageUrl');
+  const bgSlideshowUrls = document.getElementById('bgSlideshowUrls');
+  const bgInterval = document.getElementById('bgInterval');
+  const bgIframeUrl = document.getElementById('bgIframeUrl');
+
+  if (bgType) bgType.value = config.type;
+  if (bgImageUrl) bgImageUrl.value = config.imageUrl;
+  if (bgSlideshowUrls) bgSlideshowUrls.value = config.slideshowUrls;
+  if (bgInterval) {
+    bgInterval.value = config.slideshowInterval;
+    const val = document.getElementById('val_bgInterval');
+    if (val) val.innerText = `${config.slideshowInterval}s`;
+  }
+  if (bgIframeUrl) bgIframeUrl.value = config.iframeUrl;
+
+  handleBgTypeChange(config.type);
+  applyBgSettings(config);
+}
+
+function applyBgSettings(config) {
+  if (slideshowTimer) {
+    clearInterval(slideshowTimer);
+    slideshowTimer = null;
+  }
+
+  const layer1 = document.getElementById('bgLayer1');
+  const layer2 = document.getElementById('bgLayer2');
+  const iframe = document.getElementById('bgIframe');
+  if (!layer1 || !layer2 || !iframe) return;
+
+  if (config.type === 'iframe') {
+    layer1.classList.remove('active');
+    layer2.classList.remove('active');
+    iframe.style.display = 'block';
+    iframe.src = config.iframeUrl || 'about:blank';
+    return;
+  }
+
+  iframe.style.display = 'none';
+  iframe.src = 'about:blank';
+
+  if (config.type === 'image') {
+    layer1.style.backgroundImage = `url('${config.imageUrl}')`;
+    layer1.classList.add('active');
+    layer2.classList.remove('active');
+    return;
+  }
+
+  if (config.type === 'slideshow') {
+    const urls = (config.slideshowUrls || '')
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    if (!urls.length) {
+      layer1.style.backgroundImage = `url('${config.imageUrl}')`;
+      layer1.classList.add('active');
+      layer2.classList.remove('active');
+      return;
+    }
+
+    slideshowIndex = 0;
+    layer1.style.backgroundImage = `url('${urls[0]}')`;
+    layer1.classList.add('active');
+    layer2.classList.remove('active');
+    activeBgLayer = 1;
+
+    slideshowTimer = setInterval(() => {
+      const next = urls[(slideshowIndex + 1) % urls.length];
+      slideshowIndex = (slideshowIndex + 1) % urls.length;
+
+      if (activeBgLayer === 1) {
+        layer2.style.backgroundImage = `url('${next}')`;
+        layer2.classList.add('active');
+        layer1.classList.remove('active');
+        activeBgLayer = 2;
+      } else {
+        layer1.style.backgroundImage = `url('${next}')`;
+        layer1.classList.add('active');
+        layer2.classList.remove('active');
+        activeBgLayer = 1;
+      }
+    }, Number(config.slideshowInterval || 10) * 1000);
+  }
+}
+
 async function checkAirAlerts() {
   try {
     const response = await fetch(`${ALERTS_API}?t=${Date.now()}`, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
       cache: 'no-store',
       signal: AbortSignal.timeout(ALERTS_INTERVAL - 2000)
     });
@@ -57,7 +253,7 @@ async function checkAirAlerts() {
     let hasAlert = false;
 
     if (Array.isArray(data)) {
-      hasAlert = data.some(r => Array.isArray(r.activeAlerts) && r.activeAlerts.length > 0);
+      hasAlert = data.some(item => Array.isArray(item.activeAlerts) && item.activeAlerts.length > 0);
     } else if (data && Array.isArray(data.activeAlerts)) {
       hasAlert = data.activeAlerts.length > 0;
     } else if (data && data.alerts) {
@@ -92,18 +288,23 @@ function setAlertStatus(hasAlert) {
 
 function playAlertSound() {
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+
+    const ctx = new AudioCtor();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.value = 900;
+    gain.gain.value = 0.18;
 
     osc.connect(gain);
-    gain.connect(audioContext.destination);
-    osc.frequency.value = 900;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-    osc.start(audioContext.currentTime);
-    osc.stop(audioContext.currentTime + 0.4);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.45);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
   } catch (e) {
     console.warn('Помилка звуку:', e.message);
   }
@@ -116,37 +317,44 @@ function loadSchedule() {
     validateSchedule();
   } catch (e) {
     console.error('Помилка завантаження розкладу:', e);
-    schedule = DEFAULT_SCHEDULE;
+    schedule = [...DEFAULT_SCHEDULE];
   }
 }
 
 function validateSchedule() {
-  if (!Array.isArray(schedule) || schedule.length === 0) schedule = DEFAULT_SCHEDULE;
-  schedule = schedule.filter(l => l.lesson && l.start && l.end);
+  if (!Array.isArray(schedule) || !schedule.length) {
+    schedule = [...DEFAULT_SCHEDULE];
+    return;
+  }
+
+  schedule = schedule.filter(item => item && item.lesson && item.start && item.end);
+  if (!schedule.length) schedule = [...DEFAULT_SCHEDULE];
 }
 
 function saveSchedule() {
   try {
     const rows = document.querySelectorAll('#scheduleInputs .input-row');
-    if (rows.length === 0) {
+    if (!rows.length) {
       alert('Додайте хоча б один урок!');
       return;
     }
 
-    schedule = Array.from(rows).map(r => {
-      const inputs = r.querySelectorAll('input');
-      return {
-        lesson: inputs[0].value.trim(),
-        start: inputs[1].value,
-        end: inputs[2].value
-      };
-    }).filter(l => l.lesson && l.start && l.end && l.start < l.end);
+    const nextSchedule = Array.from(rows)
+      .map(row => {
+        const inputs = row.querySelectorAll('input');
+        const lesson = inputs[0]?.value?.trim();
+        const start = inputs[1]?.value;
+        const end = inputs[2]?.value;
+        return { lesson, start, end };
+      })
+      .filter(item => item.lesson && item.start && item.end && item.start < item.end);
 
-    if (schedule.length === 0) {
-      alert('Перевірте коректність даних!');
+    if (!nextSchedule.length) {
+      alert('Перевірте, чи всі уроки мають коректний час');
       return;
     }
 
+    schedule = nextSchedule;
     localStorage.setItem('dtefk_schedule', JSON.stringify(schedule));
     alert('✅ Розклад збережено!');
     toggleAdmin();
@@ -159,17 +367,20 @@ function renderInputs() {
   const container = document.getElementById('scheduleInputs');
   if (!container) return;
 
-  container.innerHTML = schedule.map((l, i) => `
-    <div class="input-row">
-      <input type="text" value="${escapeHtml(l.lesson)}" placeholder="1" maxlength="10">
-      <input type="time" value="${l.start}">
-      <input type="time" value="${l.end}">
-      <button onclick="removeLesson(${i})" type="button">✕</button>
-    </div>
-  `).join('');
+  container.innerHTML = schedule
+    .map((item, index) => `
+      <div class="input-row">
+        <input type="text" value="${escapeHtml(item.lesson)}" placeholder="1" maxlength="10">
+        <input type="time" value="${item.start}">
+        <input type="time" value="${item.end}">
+        <button onclick="removeLesson(${index})" type="button">✕</button>
+      </div>
+    `)
+    .join('');
 }
 
 function removeLesson(index) {
+  if (index < 0 || index >= schedule.length) return;
   schedule.splice(index, 1);
   renderInputs();
 }
@@ -181,17 +392,16 @@ function addInputRow() {
 
 function exportSchedule() {
   try {
-    const data = JSON.stringify(schedule, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(schedule, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `dtefk_schedule_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    alert('✅ Розклад експортовано!');
+    alert('✅ Розклад експортовано');
   } catch (e) {
-    alert('Помилка: ' + e.message);
+    alert('Помилка експорту: ' + e.message);
   }
 }
 
@@ -200,19 +410,20 @@ function importSchedule(input) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = (event) => {
     try {
-      const data = JSON.parse(e.target.result);
-      if (Array.isArray(data) && data.every(l => l.lesson && l.start && l.end)) {
-        schedule = data;
-        localStorage.setItem('dtefk_schedule', JSON.stringify(schedule));
-        renderInputs();
-        alert('✅ Розклад імпортовано успішно!');
-      } else {
-        alert('❌ Некоректний формат файлу!');
+      const parsed = JSON.parse(event.target.result);
+      if (!Array.isArray(parsed) || !parsed.every(item => item.lesson && item.start && item.end)) {
+        alert('❌ Некоректний формат JSON');
+        return;
       }
-    } catch (err) {
-      alert('❌ Помилка парсингу JSON: ' + err.message);
+
+      schedule = parsed;
+      localStorage.setItem('dtefk_schedule', JSON.stringify(schedule));
+      renderInputs();
+      alert('✅ Розклад імпортовано успішно');
+    } catch (e) {
+      alert('❌ Помилка парсингу JSON: ' + e.message);
     }
   };
   reader.readAsText(file);
@@ -240,9 +451,8 @@ function updateClock() {
 
   const hm = timeStr.substring(0, 5);
   let active = null;
-
-  schedule.forEach(l => {
-    if (hm >= l.start && hm < l.end) active = l;
+  schedule.forEach(item => {
+    if (hm >= item.start && hm < item.end) active = item;
   });
 
   const lessonInfo = document.getElementById('lessonInfo');
@@ -261,35 +471,40 @@ function updateClock() {
   }
 
   if (now.getSeconds() === 0) {
-    schedule.forEach(l => {
-      if (hm === l.start || hm === l.end) playBell();
+    schedule.forEach(item => {
+      if (hm === item.start || hm === item.end) playBell();
     });
   }
 }
 
 function playBell() {
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+
+    const ctx = new AudioCtor();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.value = 1200;
+    gain.gain.value = 0.12;
 
     osc.connect(gain);
-    gain.connect(audioContext.destination);
-    osc.frequency.setValueAtTime(1000, audioContext.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.3);
-    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0, audioContext.currentTime + 0.3);
-    osc.start(audioContext.currentTime);
-    osc.stop(audioContext.currentTime + 0.3);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
   } catch (e) {
-    console.warn('Помилка звуку:', e);
+    console.warn('Помилка звуку:', e.message);
   }
 }
 
 const GROUP_RE = /^[A-Za-zА-ЯІЇЄҐа-яіїєґ0-9]+(?:-[A-Za-zА-ЯІЇЄҐа-яіїєґ0-9]+)+$/;
 
-function cleanText(cell) {
-  return (cell?.textContent || '').replace(/\s+/g, ' ').trim();
+function cleanText(value) {
+  return (value || '').replace(/\s+/g, ' ').trim();
 }
 
 function parseReplacesHtml(htmlContent) {
@@ -297,8 +512,9 @@ function parseReplacesHtml(htmlContent) {
   const result = [];
 
   doc.querySelectorAll('table').forEach(table => {
-    const headers = Array.from(table.querySelectorAll('th')).map(th => cleanText(th).toLowerCase());
+    const headers = Array.from(table.querySelectorAll('th')).map(th => cleanText(th.textContent).toLowerCase());
     const col = name => headers.findIndex(h => h.includes(name));
+
     const idx = {
       group: col('груп'),
       lesson: col('пара'),
@@ -306,17 +522,20 @@ function parseReplacesHtml(htmlContent) {
       teacher: col('виклад'),
       room: col('аудит')
     };
+
     const hasHeaders = idx.group !== -1;
 
     table.querySelectorAll('tr').forEach(row => {
       const cells = Array.from(row.querySelectorAll('td'));
       if (cells.length < 2) return;
 
-      const pick = i => (i !== -1 && cells[i]) ? cleanText(cells[i]) : '';
-      const group = hasHeaders ? pick(idx.group) : cleanText(cells[0]);
+      const pick = i => (i !== -1 && cells[i]) ? cleanText(cells[i].textContent) : '';
+      const group = hasHeaders ? pick(idx.group) : cleanText(cells[0]?.textContent || '');
       if (!GROUP_RE.test(group)) return;
 
-      let info, room;
+      let info = '';
+      let room = '';
+
       if (hasHeaders) {
         const lesson = pick(idx.lesson);
         const subject = pick(idx.subject);
@@ -324,14 +543,14 @@ function parseReplacesHtml(htmlContent) {
         room = pick(idx.room);
         info = [lesson ? `${lesson} пара` : '', subject, teacher].filter(Boolean).join(' • ');
       } else {
-        room = cleanText(cells[cells.length - 1]);
-        info = cells.slice(1, -1).map(cleanText).filter(Boolean).join(' • ');
+        room = cleanText(cells[cells.length - 1]?.textContent || '');
+        info = cells.slice(1, -1).map(cell => cleanText(cell.textContent)).filter(Boolean).join(' • ');
       }
 
       result.push({
         group,
         info: info || 'Зміна розкладу',
-        room: room.replace(/[–—]/g, '').trim() || '--',
+        room: room.replace(/[-–—]/g, '').trim() || '--',
         date: new Date().toISOString().split('T')[0]
       });
     });
@@ -342,69 +561,69 @@ function parseReplacesHtml(htmlContent) {
 
 async function fetchReplaces() {
   console.log('🔄 Завантаження замін...');
-  if (allReplaces.length === 0) {
-    replacesError = null;
-    renderReplaces();
-  }
-
-  const corsProxies = [
-    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: true },
-    { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: false },
-    { url: `https://corsproxy.io/?url=${encodeURIComponent(REPLACES_URL)}`, json: false },
-    { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(REPLACES_URL)}`, json: false }
-  ];
 
   let parsed = null;
+  const proxies = [
+    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: true },
+    { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(REPLACES_URL)}&t=${Date.now()}`, json: false },
+    { url: `https://corsproxy.io/?url=${encodeURIComponent(REPLACES_URL)}`, json: false }
+  ];
 
   try {
-    const res = await Promise.race([
+    const response = await Promise.race([
       fetch(`${REPLACES_JSON_URL}?t=${Date.now()}`, { cache: 'no-store' }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
     ]);
-    if (res.ok) {
-      const data = await res.json();
+
+    if (response.ok) {
+      const data = await response.json();
       if (Array.isArray(data.items) && data.items.length > 0) {
         parsed = data.items.map(item => ({
           ...item,
           date: item.date || new Date().toISOString().split('T')[0]
         }));
-        const updatedDate = new Date(data.updated);
-        replacesUpdatedTime = updatedDate.toLocaleString('uk-UA', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
+
+        if (data.updated) {
+          const updatedDate = new Date(data.updated);
+          replacesUpdatedTime = updatedDate.toLocaleString('uk-UA', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        }
       }
     }
   } catch (e) {
     console.warn('GitHub JSON недоступний:', e.message);
   }
 
-  for (const proxy of corsProxies) {
-    if (parsed !== null) break;
-    try {
-      const res = await Promise.race([
-        fetch(proxy.url),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
-      ]);
-      if (!res.ok) continue;
+  if (!parsed) {
+    for (const proxy of proxies) {
+      try {
+        const response = await Promise.race([
+          fetch(proxy.url),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
+        ]);
 
-      const htmlContent = proxy.json ? (await res.json()).contents : await res.text();
-      if (!htmlContent || !htmlContent.includes('<table')) continue;
+        if (!response.ok) continue;
 
-      parsed = parseReplacesHtml(htmlContent);
-      replacesUpdatedTime = new Date().toLocaleString('uk-UA', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      break;
-    } catch (e) {
-      console.warn('Proxy не працює:', e.message);
+        const text = proxy.json ? (await response.json()).contents : await response.text();
+        if (!text || !text.includes('<table')) continue;
+
+        parsed = parseReplacesHtml(text);
+        replacesUpdatedTime = new Date().toLocaleString('uk-UA', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        break;
+      } catch (e) {
+        console.warn('Proxy не працює:', e.message);
+      }
     }
   }
 
@@ -416,7 +635,7 @@ async function fetchReplaces() {
   } else {
     replacesError = false;
     allReplaces = parsed;
-    const uniqueDates = [...new Set(allReplaces.map(r => r.date || new Date().toISOString().split('T')[0]))].sort();
+    const uniqueDates = [...new Set(allReplaces.map(item => item.date || new Date().toISOString().split('T')[0]))].sort();
     allDatesWithReplaces = uniqueDates;
   }
 
@@ -426,32 +645,31 @@ async function fetchReplaces() {
 
 function formatReplaceDate(dateStr) {
   if (!dateStr) return 'Без дати';
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(`${dateStr}T00:00:00`);
   const weekday = new Intl.DateTimeFormat('uk-UA', { weekday: 'long' }).format(d);
   const day = d.getDate();
   const month = new Intl.DateTimeFormat('uk-UA', { month: 'long' }).format(d);
-  const year = d.getFullYear();
-  return `${day} ${month} ${year} (${weekday})`;
+  return `${day} ${month} (${weekday})`;
 }
 
 function renderReplaces() {
   const list = document.getElementById('replacesList');
   if (!list) return;
 
-  if (allReplaces.length === 0) {
+  if (!allReplaces.length) {
     const text = replacesError === null ? '⏳ Завантаження замін...' : replacesError ? '⚠️ Не вдалося завантажити заміни' : '✅ Замін немає';
-    list.innerHTML = `<div style='text-align:center;margin-top:50px;opacity:0.7;'>${text}</div>`;
+    list.innerHTML = `<div style="text-align:center;margin-top:50px;opacity:0.7;">${text}</div>`;
     const pageInfo = document.getElementById('pageInfo');
     if (pageInfo) pageInfo.innerText = replacesUpdatedTime ? `${replacesUpdatedTime}` : '0/0';
     return;
   }
 
-  if (allDatesWithReplaces.length === 0) {
+  if (!allDatesWithReplaces.length) {
     allDatesWithReplaces = [new Date().toISOString().split('T')[0]];
   }
 
   const currentDate = allDatesWithReplaces[currentDateIndex % allDatesWithReplaces.length];
-  const itemsForDate = allReplaces.filter(r => (r.date || new Date().toISOString().split('T')[0]) === currentDate);
+  const itemsForDate = allReplaces.filter(item => (item.date || new Date().toISOString().split('T')[0]) === currentDate);
 
   const header = `▼ Зміни до розкладу на ${formatReplaceDate(currentDate)}`;
   const rows = itemsForDate.map(item => `
@@ -462,7 +680,7 @@ function renderReplaces() {
     </tr>
   `).join('');
 
-  const html = `
+  list.innerHTML = `
     <div style="margin-bottom: 18px; border-radius: 12px; overflow: hidden; background: rgba(18, 38, 57, 0.78); border: 1px solid rgba(0,255,245,0.25); box-shadow: 0 8px 22px rgba(0,0,0,0.22);">
       <div style="background: rgba(9, 89, 111, 0.9); color: #ff5a5a; font-weight: 800; font-size: 15px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.12);">${header}</div>
       <div style="overflow-x:auto;">
@@ -480,8 +698,7 @@ function renderReplaces() {
     </div>
   `;
 
-  list.innerHTML = html;
-  currentDateIndex++;
+  currentDateIndex = (currentDateIndex + 1) % allDatesWithReplaces.length;
 
   const pageInfo = document.getElementById('pageInfo');
   if (pageInfo) {
@@ -494,29 +711,29 @@ function renderReplaces() {
 async function loadWeather() {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_COORDS.lat}&longitude=${WEATHER_COORDS.lon}&current_weather=true`;
-    const res = await Promise.race([
+    const response = await Promise.race([
       fetch(url),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), API_TIMEOUT))
     ]);
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const data = await res.json();
+    const data = await response.json();
     weatherData = data.current_weather;
 
     const temp = Math.round(weatherData.temperature);
-    const windCode = weatherData.weather_code;
+    const code = weatherData.weather_code;
+
     let icon = '☀️';
-    if (windCode >= 80 && windCode <= 82) icon = '🌧';
-    else if (windCode >= 71 && windCode <= 77) icon = '❄️';
-    else if (windCode >= 80) icon = '⛈';
-    else if (windCode >= 45) icon = '🌫';
-    else if (windCode > 3) icon = '☁️';
+    if ([80, 81, 82].includes(code)) icon = '🌧';
+    else if ([71, 73, 75, 77, 85, 86].includes(code)) icon = '❄️';
+    else if ([45, 48].includes(code)) icon = '🌫';
+    else if (code >= 3 && code <= 48) icon = '☁️';
 
     const iconEl = document.getElementById('weatherIcon');
     const tempEl = document.getElementById('temp');
     if (iconEl) iconEl.innerText = icon;
-    if (tempEl) tempEl.innerText = temp;
+    if (tempEl) tempEl.innerText = String(temp);
   } catch (e) {
     const iconEl = document.getElementById('weatherIcon');
     if (iconEl) iconEl.innerText = '❓';
@@ -543,9 +760,9 @@ function toggleFullscreen() {
   }
 }
 
-function escapeHtml(text) {
+function escapeHtml(value) {
   const div = document.createElement('div');
-  div.textContent = text;
+  div.textContent = String(value ?? '');
   return div.innerHTML;
 }
 
