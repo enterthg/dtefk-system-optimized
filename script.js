@@ -17,8 +17,8 @@ const ALERTS_INTERVAL = 10000;
 let schedule = [];
 let allReplaces = [];
 let replacesError = null;
-let currentDateIndex = 0; // Індекс поточної дати
-let allDatesWithReplaces = []; // Масив всіх дат
+let currentDateIndex = 0;
+let allDatesWithReplaces = [];
 let weatherData = null;
 let currentAlertStatus = null;
 let replacesUpdatedTime = null;
@@ -230,7 +230,7 @@ function updateClock() {
   const clockEl = document.getElementById('clock');
   if (clockEl) clockEl.innerText = timeStr;
 
-  const days = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П'ятниця', 'Субота'];
+  const days = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'Пʼятниця', 'Субота'];
   const months = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 
   const dateEl = document.getElementById('date');
@@ -332,7 +332,7 @@ function parseReplacesHtml(htmlContent) {
         group,
         info: info || 'Зміна розкладу',
         room: room.replace(/[–—]/g, '').trim() || '--',
-        date: null
+        date: new Date().toISOString().split('T')[0]
       });
     });
   });
@@ -364,7 +364,10 @@ async function fetchReplaces() {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.items) && data.items.length > 0) {
-        parsed = data.items;
+        parsed = data.items.map(item => ({
+          ...item,
+          date: item.date || new Date().toISOString().split('T')[0]
+        }));
         const updatedDate = new Date(data.updated);
         replacesUpdatedTime = updatedDate.toLocaleString('uk-UA', {
           year: 'numeric',
@@ -413,7 +416,6 @@ async function fetchReplaces() {
   } else {
     replacesError = false;
     allReplaces = parsed;
-    // Отримуємо унікальні дати
     const uniqueDates = [...new Set(allReplaces.map(r => r.date || new Date().toISOString().split('T')[0]))].sort();
     allDatesWithReplaces = uniqueDates;
   }
@@ -444,16 +446,13 @@ function renderReplaces() {
     return;
   }
 
-  // Якщо немає дат - встановлюємо дефолтну
   if (allDatesWithReplaces.length === 0) {
     allDatesWithReplaces = [new Date().toISOString().split('T')[0]];
   }
 
-  // Циклічна навігація по датам
   const currentDate = allDatesWithReplaces[currentDateIndex % allDatesWithReplaces.length];
   const itemsForDate = allReplaces.filter(r => (r.date || new Date().toISOString().split('T')[0]) === currentDate);
 
-  // Будуємо таблицю
   const header = `▼ Зміни до розкладу на ${formatReplaceDate(currentDate)}`;
   const rows = itemsForDate.map(item => `
     <tr>
@@ -482,12 +481,12 @@ function renderReplaces() {
   `;
 
   list.innerHTML = html;
-  currentDateIndex++; // Переходимо на наступну дату
+  currentDateIndex++;
 
   const pageInfo = document.getElementById('pageInfo');
   if (pageInfo) {
     const info = replacesUpdatedTime ? `${replacesUpdatedTime} • ` : '';
-    const counter = `${currentDateIndex} / ${allDatesWithReplaces.length}`;
+    const counter = `${(currentDateIndex % allDatesWithReplaces.length) + 1} / ${allDatesWithReplaces.length}`;
     pageInfo.innerText = `${info}${counter} • ${itemsForDate.length} замін`;
   }
 }
